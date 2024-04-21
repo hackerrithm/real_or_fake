@@ -59,7 +59,7 @@ func main() {
 	handler := c.Handler(mux)
 
 	// Start server with the CORS-enabled handler
-	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, handler))
+	log.Fatal(http.ListenAndServe("localhost:"+port, handler))
 }
 
 func getImageHandler(w http.ResponseWriter, r *http.Request) {
@@ -162,7 +162,7 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("✓"))
 
 		// Make another API call to get new image
-		resp, err := http.Get("0.0.0.0:" + port + "/image")
+		resp, err := http.Get("localhost:" + port + "/image")
 		if err != nil {
 			fmt.Println("Error fetching new image:", err)
 			return
