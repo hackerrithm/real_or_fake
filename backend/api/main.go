@@ -162,7 +162,7 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("✓"))
 
 		// Make another API call to get new image
-		resp, err := http.Get("http://localhost:8080/image")
+		resp, err := http.Get("0.0.0.0:" + port + "/image")
 		if err != nil {
 			fmt.Println("Error fetching new image:", err)
 			return
