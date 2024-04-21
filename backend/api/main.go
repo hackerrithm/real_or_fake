@@ -7,13 +7,19 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+
+	"github.com/rs/cors"
 )
+
+// S3 bucket and region
+var AWSID = os.Getenv("AWSID")
+var AWSSecret = os.Getenv("AWSSECRET")
 
 // ImageResponse represents the response returned by the API
 type ImageResponse struct {
@@ -25,70 +31,109 @@ type ImageResponse struct {
 var folders = []string{"fake", "real"}
 
 // S3 bucket and region
-var bucketName = "your-bucket-name"
-var region = "your-region"
+var bucketName = "real-fake-images"
+var region = "us-east-1"
 
 // Create an AWS session
 var sess = session.Must(session.NewSession(&aws.Config{
 	Region: aws.String(region),
+	Credentials: credentials.NewStaticCredentials(
+		AWSID,     //os.Getenv("AWSID"),     //cred.AWSID,
+		AWSSecret, //os.Getenv("AWSSECRET"), //cred.AWSSecret,
+		""),
 }))
 
 // Create an S3 client
 var svc = s3.New(sess)
 
 func main() {
-	http.HandleFunc("/image", getImageHandler)
-	http.HandleFunc("/compare", compareHandler)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/image", getImageHandler)
+	mux.HandleFunc("/compare", compareHandler)
 
-	http.ListenAndServe(":8080", &corsHandler{})
-}
+	// Configure CORS
+	c := cors.AllowAll() // Allow all origins
 
-type corsHandler struct{}
+	// Create a handler chain with CORS
+	handler := c.Handler(mux)
 
-func (*corsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Accept-Language, Accept-Encoding")
-	http.DefaultServeMux.ServeHTTP(w, r)
+	// Start server with the CORS-enabled handler
+	log.Fatal(http.ListenAndServe(":8080", handler))
 }
 
 func getImageHandler(w http.ResponseWriter, r *http.Request) {
-	// Get the parent directory of the current file
-	parentDir := filepath.Dir("main.go")
+	// // Get the parent directory of the current file
+	// parentDir := filepath.Dir("main.go")
 
-	// Get a list of files in the "real" and "fake" folders
-	realFiles, err := os.ReadDir(filepath.Join(parentDir, "../images/real"))
+	// // Get a list of files in the "real" and "fake" folders
+	// realFiles, err := os.ReadDir(filepath.Join(parentDir, "../images/real"))
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// fakeFiles, err := os.ReadDir(filepath.Join(parentDir, "../images/fake"))
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// // Choose a folder at random
+	// var files []os.DirEntry
+	// var folderName string
+	// if rand.Intn(2) == 0 {
+	// 	files = realFiles
+	// 	folderName = "real"
+	// } else {
+	// 	files = fakeFiles
+	// 	folderName = "fake"
+	// }
+
+	// // Choose a file at random from the chosen folder
+	// randFile := files[rand.Intn(len(files))]
+
+	// // Get the full path of the file
+	// filePath := filepath.Join(filepath.Dir(randFile.Name()), randFile.Name())
+
+	// resp := ImageResponse{
+	// 	Answer: folderName,
+	// 	Img:    filePath,
+	// }
+
+	// jsonResp, err := json.Marshal(resp)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
+	// w.Header().Set("Content-Type", "application/json")
+	// w.Write(jsonResp)
+
+	// Choose a random folder
+	folder := folders[rand.Intn(len(folders))]
+
+	// List objects in the folder
+	resp, err := svc.ListObjectsV2(&s3.ListObjectsV2Input{
+		Bucket: aws.String(bucketName),
+		Prefix: aws.String(fmt.Sprintf("%s/", folder)),
+	})
 	if err != nil {
-		log.Fatal(err)
+		log.Println("Error listing objects:", err)
+		http.Error(w, "Failed to list objects", http.StatusInternalServerError)
+		return
 	}
-	fakeFiles, err := os.ReadDir(filepath.Join(parentDir, "../images/fake"))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Choose a folder at random
-	var files []os.DirEntry
-	var folderName string
-	if rand.Intn(2) == 0 {
-		files = realFiles
-		folderName = "real"
-	} else {
-		files = fakeFiles
-		folderName = "fake"
+	if len(resp.Contents) == 0 {
+		log.Println("No images found in the folder")
+		http.Error(w, "No images found in the folder", http.StatusInternalServerError)
+		return
 	}
 
-	// Choose a file at random from the chosen folder
-	randFile := files[rand.Intn(len(files))]
+	// Randomly select an image
+	imageKey := *resp.Contents[rand.Intn(len(resp.Contents))].Key
 
-	// Get the full path of the file
-	filePath := filepath.Join(filepath.Dir(randFile.Name()), randFile.Name())
-
-	resp := ImageResponse{
-		Answer: folderName,
-		Img:    filePath,
+	// Create and return the response
+	newResp := ImageResponse{
+		Answer: folder,
+		Img:    imageKey,
 	}
 
-	jsonResp, err := json.Marshal(resp)
+	jsonResp, err := json.Marshal(newResp)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -106,12 +151,12 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract folder name from image path
+	// Extract folder name from image key
 	parts := strings.Split(request.Img, "/")
-	imgFolder := parts[len(parts)-2]
+	folder := parts[0] // Assume the folder name is the first part of the key
 
 	// Compare response with request
-	if request.Answer == imgFolder {
+	if request.Answer == folder {
 		// Send tick response
 		w.Write([]byte("✓"))
 
