@@ -20,6 +20,7 @@ import (
 // S3 bucket and region
 var AWSID = os.Getenv("AWSID")
 var AWSSecret = os.Getenv("AWSSECRET")
+var port = os.Getenv("PORT")
 
 // ImageResponse represents the response returned by the API
 type ImageResponse struct {
@@ -58,7 +59,7 @@ func main() {
 	handler := c.Handler(mux)
 
 	// Start server with the CORS-enabled handler
-	log.Fatal(http.ListenAndServe(":8080", handler))
+	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, handler))
 }
 
 func getImageHandler(w http.ResponseWriter, r *http.Request) {
