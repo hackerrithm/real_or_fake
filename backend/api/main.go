@@ -63,6 +63,7 @@ func main() {
 }
 
 func getImageHandler(w http.ResponseWriter, r *http.Request) {
+	// TODO: remove this comment when fleshed out
 	// // Get the parent directory of the current file
 	// parentDir := filepath.Dir("main.go")
 
